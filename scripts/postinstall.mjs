@@ -9,7 +9,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import https from "node:https";
 
-const owner = "dl";
+const owner = "douglance";
 const repo = "hotbox";
 const version = process.env.npm_package_version;
 
