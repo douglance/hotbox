@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * postinstall: download platform binary from GitHub Releases into bin/safenode.
+ * postinstall: download platform binary from GitHub Releases into bin/hotbox.
  * Fallback: if invoked with --build-local (pack/publish), build with Bun locally.
  */
 import { resolveTarget } from "./resolve-target.mjs";
@@ -9,8 +9,8 @@ import { execSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import https from "node:https";
 
-const owner = "your-org-or-user";
-const repo = "safenode";
+const owner = "dl";
+const repo = "hotbox";
 const version = process.env.npm_package_version;
 
 const BIN_DIR = join(process.cwd(), "bin");

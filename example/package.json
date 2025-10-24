@@ -1,7 +1,7 @@
 {
   "name": "example-app",
   "version": "1.0.0",
-  "description": "Example Node.js app to test with safenode",
+  "description": "Example Node.js app to test with hotbox",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
