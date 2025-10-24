@@ -13,6 +13,6 @@ export function resolveTarget() {
   const key = `${platform}-${arch}`;
   const t = triples[key];
   if (!t) throw new Error(`Unsupported platform/arch: ${key}`);
-  const exe = platform === "win32" ? "safenode.exe" : "safenode";
+  const exe = platform === "win32" ? "hotbox.exe" : "hotbox";
   return { triple: t, exe };
 }

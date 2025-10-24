@@ -1,10 +1,10 @@
 {
-  "name": "safenode",
+  "name": "@douglance/hotbox",
   "version": "0.1.0",
   "description": "Run any Node project safely in Docker using ni inside the container.",
   "license": "MIT",
   "bin": {
-    "safenode": "bin/safenode"
+    "hotbox": "bin/hotbox"
   },
   "files": [
     "bin/",
@@ -12,7 +12,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/cli.ts --compile --outfile=bin/safenode",
+    "build": "bun build ./src/cli.ts --compile --outfile=bin/hotbox",
     "prepack": "node ./scripts/postinstall.mjs --build-local",
     "postinstall": "node ./scripts/postinstall.mjs",
     "dev": "bun run src/cli.ts -- --help"

@@ -1,4 +1,4 @@
-# safenode
+# hotbox
 
 Run any Node.js project safely in a hardened Docker sandbox with automatic package manager detection via `ni`.
 
@@ -14,51 +14,62 @@ Run any Node.js project safely in a hardened Docker sandbox with automatic packa
 ## Installation
 
 ```bash
-npm install -g safenode
+npm install -g @douglance/hotbox
 # or
-yarn global add safenode
+yarn global add @douglance/hotbox
 # or
-pnpm add -g safenode
+pnpm add -g @douglance/hotbox
 ```
 
 ## Usage
 
 ```bash
 # Run with auto-detected port (app's PORT env or 3000)
-safenode
+hotbox
 
 # Use a specific port (same on host and container)
-safenode -p 8080
+hotbox -p 8080
 
 # Map different ports (host:container)
-safenode -p 9000:3000
+hotbox -p 9000:3000
 
 # No network (air-gapped)
-safenode -n
+hotbox -n
 
 # Custom resource limits
-safenode --mem 1g --cpus 1.0 --pids 150
+hotbox --mem 1g --cpus 1.0 --pids 150
 
 # Allow write access (e.g., for codegen)
-safenode --rw
+hotbox --rw
 
-# Custom Docker image
-safenode -i node:22-alpine
+# Use specific Node version
+hotbox --node-version 18
+
+# Auto-detects Node 20 from package.json engines.node field
+hotbox
+
+# Custom Docker image (overrides version detection)
+hotbox -i node:22-alpine
 
 # Pass environment variables
-safenode --env API_KEY=secret --env DEBUG=true
+hotbox --env API_KEY=secret --env DEBUG=true
 
 # See all options
-safenode --help
+hotbox --help
 ```
 
 ## How It Works
 
 1. **Mounts your project read-only** into a Docker container (toggle with `--rw`)
 2. **Isolates node_modules** in an ephemeral Docker volume
-3. **Installs dependencies** using `ni` (auto-detects npm/pnpm/yarn/bun)
-4. **Runs your project** via `ni start` → `ni dev` → `node index.js` fallback
-5. **Applies security hardening**:
+3. **Auto-detects package manager** using `ni` from lockfiles:
+   - `package-lock.json` → npm
+   - `yarn.lock` → yarn
+   - `pnpm-lock.yaml` → pnpm
+   - `bun.lockb` → bun
+4. **Installs dependencies** with detected package manager
+5. **Runs your project** via `ni start` → `ni dev` → `node index.js` fallback
+6. **Applies security hardening**:
    - Drops all Linux capabilities
    - Enables no-new-privileges
    - Sets resource limits (CPU/memory/PIDs)
@@ -86,7 +97,8 @@ safenode --help
 | `--mem` | Memory limit | `512m` |
 | `--cpus` | CPU cores limit | `0.5` |
 | `--pids` | Process IDs limit | `200` |
-| `-i, --image` | Docker base image | `node:20-alpine` |
+| `-i, --image` | Docker base image (overrides `--node-version`) | - |
+| `--node-version` | Node.js major version (e.g., 18, 20, 22) | Auto-detect from `engines.node` or `22` |
 | `--env` | Environment variables (repeatable) | - |
 | `--rw` | Mount project read-write | `false` (read-only) |
 | `--verbose` | Show Docker command | `false` |
@@ -97,6 +109,18 @@ safenode --help
 - **No flag**: Uses app's default port (reads `PORT` env or defaults to 3000)
 - **`-p 8080`**: Runs on port 8080 (both host and container)
 - **`-p 9000:3000`**: Maps host port 9000 to container port 3000
+
+### Node Version Detection
+
+hotbox automatically selects the appropriate Node.js version:
+
+1. **Explicit flag** (`--node-version 18`): Uses specified version
+2. **Auto-detect from `package.json`**: Reads `engines.node` field
+   - `"node": ">=20.0.0"` → Node 20
+   - `"node": "^18.12.0"` → Node 18
+   - `"node": "18.x"` → Node 18
+3. **Default**: Falls back to Node 22 if no version specified or detected
+4. **Custom image** (`--image`): Overrides all version detection
 
 ## Development
 
@@ -112,8 +136,8 @@ safenode --help
 curl -fsSL https://bun.sh/install | bash
 
 # Clone and build
-git clone https://github.com/your-org/safenode
-cd safenode
+git clone https://github.com/dl/hotbox
+cd hotbox
 bun install
 bun run build
 ```
@@ -126,7 +150,7 @@ bun run dev
 
 # Build and test the binary
 bun run build
-./bin/safenode --help
+./bin/hotbox --help
 ```
 
 ### Release Process
@@ -142,18 +166,22 @@ bun run build
 ## Architecture
 
 ```
-safenode (your machine)
+hotbox (your machine)
     ↓
-docker run (hardened container)
+docker run (hardened node:22-alpine container)
     ↓
-ni install (auto-detect package manager)
+copy source + lockfiles → /home/node/work
+    ↓
+ni (detects lockfile → npm/yarn/pnpm/bun)
+    ↓
+install dependencies with detected PM
     ↓
 ni start/dev (run your project)
 ```
 
 ## Comparison
 
-| Feature | safenode | Direct `node` | Docker manually |
+| Feature | hotbox | Direct `node` | Docker manually |
 |---------|----------|---------------|-----------------|
 | Zero-config | ✅ | ✅ | ❌ |
 | Security isolation | ✅ | ❌ | ✅ |
@@ -176,5 +204,5 @@ Contributions welcome! Please:
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/your-org/safenode/issues)
-- Discussions: [GitHub Discussions](https://github.com/your-org/safenode/discussions)
+- Issues: [GitHub Issues](https://github.com/dl/hotbox/issues)
+- Discussions: [GitHub Discussions](https://github.com/dl/hotbox/discussions)
