@@ -31,7 +31,7 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p dist
-          OUT="dist/safenode-${{ matrix.triple }}"
+          OUT="dist/hotbox-${{ matrix.triple }}"
           if [[ "${{ startsWith(matrix.os, 'windows') }}" == "true" ]]; then
             bun build ./src/cli.ts --compile --outfile="${OUT}.exe"
             echo "OUT=${OUT}.exe" >> $GITHUB_ENV

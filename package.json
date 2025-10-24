@@ -1,6 +1,6 @@
 {
   "name": "@douglance/hotbox",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run any Node project safely in Docker using ni inside the container.",
   "license": "MIT",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "files": [
     "bin/",
+    "src/",
     "scripts/",
     "README.md"
   ],
