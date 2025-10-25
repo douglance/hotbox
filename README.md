@@ -1,5 +1,9 @@
 # hotbox
 
+<p align="center">
+  <img src="logo.png" alt="hotbox logo" width="400"/>
+</p>
+
 Run any Node.js project safely in a hardened Docker sandbox with automatic package manager detection via `ni`.
 
 ## Features

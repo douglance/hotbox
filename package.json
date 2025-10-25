@@ -1,10 +1,13 @@
 {
   "name": "@douglance/hotbox",
   "version": "0.2.0",
-  "description": "Run any Node project safely in Docker using ni inside the container.",
-  "license": "MIT",
   "bin": {
     "hotbox": "bin/hotbox"
+  },
+  "description": "Run any Node project safely in Docker using ni inside the container.",
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.1.0"
   },
   "files": [
     "bin/",
@@ -12,14 +15,11 @@
     "scripts/",
     "README.md"
   ],
+  "license": "MIT",
   "scripts": {
     "build": "bun build ./src/cli.ts --compile --outfile=bin/hotbox",
     "prepack": "node ./scripts/postinstall.mjs --build-local",
     "postinstall": "node ./scripts/postinstall.mjs",
     "dev": "bun run src/cli.ts -- --help"
-  },
-  "engines": {
-    "node": ">=18",
-    "bun": ">=1.1.0"
   }
 }
