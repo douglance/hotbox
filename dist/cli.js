@@ -34,7 +34,7 @@ __export(exports_ui, {
   HotboxUI: () => HotboxUI
 });
 import { createElement, useState, useEffect } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useStdout } from "ink";
 function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }) {
   const [frameIndex, setFrameIndex] = useState(0);
   const { stdout } = useStdout();
@@ -47,11 +47,6 @@ function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }) {
     }, 100);
     return () => clearInterval(interval);
   }, []);
-  useInput((input, key) => {
-    if (input === "q" || key.escape || key.ctrl && input === "c") {
-      process.exit(0);
-    }
-  });
   const fireColor = fireColors[frameIndex % fireColors.length];
   const flame = flames[frameIndex];
   const termHeight = stdout?.rows || 30;
@@ -271,6 +266,26 @@ async function main() {
   const { HotboxUI: HotboxUI2 } = await Promise.resolve().then(() => (init_ui(), exports_ui));
   const logs = [];
   let rerender = null;
+  let rerenderScheduled = false;
+  const scheduleRerender = () => {
+    if (!rerenderScheduled && rerender) {
+      rerenderScheduled = true;
+      setImmediate(() => {
+        if (rerender) {
+          rerender(React.createElement(HotboxUI2, {
+            nodeVersion: o.nodeVersion,
+            cpus: o.cpus,
+            mem: o.mem,
+            pids: o.pids,
+            port: hostPort,
+            noNetwork: o.noNetwork || false,
+            logs: logs.slice()
+          }));
+        }
+        rerenderScheduled = false;
+      });
+    }
+  };
   const p = spawn(cmd[0], cmd.slice(1), {
     stdio: ["inherit", "pipe", "pipe"]
   });
@@ -279,34 +294,14 @@ async function main() {
     const lines = text.split(`
 `).filter((l) => l.trim());
     logs.push(...lines);
-    if (rerender) {
-      rerender({
-        nodeVersion: o.nodeVersion,
-        cpus: o.cpus,
-        mem: o.mem,
-        pids: o.pids,
-        port: hostPort,
-        noNetwork: o.noNetwork || false,
-        logs: logs.slice()
-      });
-    }
+    scheduleRerender();
   });
   p.stderr.on("data", (chunk) => {
     const text = chunk.toString();
     const lines = text.split(`
 `).filter((l) => l.trim());
     logs.push(...lines);
-    if (rerender) {
-      rerender({
-        nodeVersion: o.nodeVersion,
-        cpus: o.cpus,
-        mem: o.mem,
-        pids: o.pids,
-        port: hostPort,
-        noNetwork: o.noNetwork || false,
-        logs: logs.slice()
-      });
-    }
+    scheduleRerender();
   });
   const { rerender: rerenderFn } = render(React.createElement(HotboxUI2, {
     nodeVersion: o.nodeVersion,

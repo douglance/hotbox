@@ -283,6 +283,29 @@ async function main() {
 
   const logs: string[] = [];
   let rerender: ((props: any) => void) | null = null;
+  let rerenderScheduled = false;
+
+  const scheduleRerender = () => {
+    if (!rerenderScheduled && rerender) {
+      rerenderScheduled = true;
+      setImmediate(() => {
+        if (rerender) {
+          rerender(
+            React.createElement(HotboxUI, {
+              nodeVersion: o.nodeVersion!,
+              cpus: o.cpus!,
+              mem: o.mem!,
+              pids: o.pids!,
+              port: hostPort,
+              noNetwork: o.noNetwork || false,
+              logs: logs.slice()
+            })
+          );
+        }
+        rerenderScheduled = false;
+      });
+    }
+  };
 
   // Spawn docker process
   const p = spawn(cmd[0], cmd.slice(1), {
@@ -294,17 +317,7 @@ async function main() {
     const text = chunk.toString();
     const lines = text.split('\n').filter(l => l.trim());
     logs.push(...lines);
-    if (rerender) {
-      rerender({
-        nodeVersion: o.nodeVersion!,
-        cpus: o.cpus!,
-        mem: o.mem!,
-        pids: o.pids!,
-        port: hostPort,
-        noNetwork: o.noNetwork || false,
-        logs: logs.slice()
-      });
-    }
+    scheduleRerender();
   });
 
   // Stream stderr
@@ -312,17 +325,7 @@ async function main() {
     const text = chunk.toString();
     const lines = text.split('\n').filter(l => l.trim());
     logs.push(...lines);
-    if (rerender) {
-      rerender({
-        nodeVersion: o.nodeVersion!,
-        cpus: o.cpus!,
-        mem: o.mem!,
-        pids: o.pids!,
-        port: hostPort,
-        noNetwork: o.noNetwork || false,
-        logs: logs.slice()
-      });
-    }
+    scheduleRerender();
   });
 
   // Render UI

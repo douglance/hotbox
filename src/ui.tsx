@@ -1,5 +1,5 @@
 import { createElement, useState, useEffect } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 
 export interface HotboxUIProps {
   nodeVersion: string;
@@ -28,12 +28,6 @@ export function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }
     }, 100);
     return () => clearInterval(interval);
   }, []);
-
-  useInput((input, key) => {
-    if (input === 'q' || key.escape || key.ctrl && input === 'c') {
-      process.exit(0);
-    }
-  });
 
   const fireColor = fireColors[frameIndex % fireColors.length];
   const flame = flames[frameIndex];
