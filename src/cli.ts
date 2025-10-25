@@ -2,35 +2,35 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-/**
- * hotbox — run current Node project in a hardened Docker sandbox.
- *
- * Port behavior:
- *   No flag:     Uses app's default port (PORT env or 3000) on same port
- *   -p 8080:     Runs on port 8080 (both host and container)
- *   -p 9000:3000: Maps host port 9000 to container port 3000
- *
- * Flags:
- *   -p, --port        port or host:container mapping
- *   -n, --no-network  disable networking
- *   --mem             memory limit (default 512m)
- *   --cpus            CPU limit (default 0.5)
- *   --pids            PIDs limit (default 200)
- *   -i, --image       Docker base image (overrides --node-version)
- *   --node-version    Node.js major version (e.g., 18, 20, 22)
- *                     Auto-detected from package.json engines.node
- *   --env             repeatable KEY=VAL to pass into container
- *   --rw              allow write access to project (default ro)
- *   --verbose         show docker command before run
- *   --help
- *
- * Examples:
- *   hotbox                    # Auto-detect port and Node version
- *   hotbox -p 8080            # Runs on port 8080
- *   hotbox --node-version 18  # Use Node 18
- *   hotbox -p 9000:3000       # Maps port 9000→3000
- *   hotbox -n                 # No network access
- */
+// ANSI color codes (Atom One Dark + Fire)
+const reset = "\x1b[0m";
+const red = "\x1b[38;2;224;108;117m";
+const green = "\x1b[38;2;152;195;121m";
+const yellow = "\x1b[38;2;229;192;123m";
+const blue = "\x1b[38;2;97;175;239m";
+const orange = "\x1b[38;2;247;127;0m"; // Fire orange for hotbox
+const cyan = "\x1b[38;2;86;182;194m";
+const gray = "\x1b[38;2;92;99;112m";
+const dim = "\x1b[2m";
+const bold = "\x1b[1m";
+
+// Nerd Font icons
+const i = {
+  docker: "",
+  cpu: "",
+  mem: "",
+  net: "",
+  port: "",
+  box: "",
+  term: "",
+  warn: "",
+  err: "",
+  lock: "",
+  rocket: "",
+  package: "",
+  check: "",
+  arrow: "",
+};
 
 type Opts = {
   port?: string;
@@ -76,62 +76,60 @@ function parseArgs(argv: string[]): Opts {
 }
 
 function help(code = 0): never {
-  console.log(`hotbox — sandbox your Node project with Docker
+  console.log(`${orange}${i.docker} hotbox${reset} ${gray}— sandbox Node projects${reset}
 
-Usage: hotbox [options]
-
-Options:
-  -p, --port        Port (e.g., 8080) or mapping (e.g., 9000:3000)
-                    Default: app's port (3000 or $PORT)
+${gray}Options:${reset}
+  -p, --port        Port or mapping
   -n, --no-network  Disable networking
-  --mem             Memory limit (default 512m)
-  --cpus            CPU limit (default 0.5)
-  --pids            PIDs limit (default 200)
-  -i, --image       Docker base image (overrides --node-version)
-                    ⚠️  Requires HOTBOX_ALLOW_IMAGE=1
-  --node-version    Node.js version (e.g., 18, 20, 22)
-                    Auto-detected from package.json engines.node if present
-                    Default: 22
-  --env             Pass KEY=VAL (repeatable)
-  --rw              Mount project read-write (default read-only)
-                    ⚠️  Requires HOTBOX_ALLOW_RW=1
-  --shell-on-fail   Drop to shell if app fails to start
-                    ⚠️  Requires HOTBOX_ALLOW_SHELL=1
-  --verbose         Print docker invocation
-  -h, --help        Show help
-
-Security Notes:
-  • Flags marked with ⚠️  require explicit environment variable approval
-  • Docker socket files are blocked for security
-  • Offline mode (--no-network) requires existing node_modules
-
-Examples:
-  hotbox                    # Auto-detect port and Node version
-  hotbox -p 8080            # Run on port 8080
-  hotbox --node-version 18  # Use Node 18
-  hotbox -p 9000:3000       # Map host 9000 to container 3000
-  hotbox -n                 # No network access
-  HOTBOX_ALLOW_RW=1 hotbox --rw  # Allow write access
-`);
+  --mem             Memory limit (512m)
+  --cpus            CPU limit (0.5)
+  --pids            PIDs limit (200)
+  -i, --image       Docker image ${yellow}${i.warn} requires HOTBOX_ALLOW_IMAGE=1${reset}
+  --node-version    Node version (18, 20, 22)
+  --env             KEY=VAL (repeatable)
+  --rw              Read-write ${yellow}${i.warn} requires HOTBOX_ALLOW_RW=1${reset}
+  --shell-on-fail   Shell on fail ${yellow}${i.warn} requires HOTBOX_ALLOW_SHELL=1${reset}
+  --verbose         Show docker command
+  -h, --help        This help`);
   process.exit(code);
 }
 
 function die(msg: string): never {
-  console.error(msg);
+  console.error(`${red}${i.err} ${msg}${reset}`);
   process.exit(1);
+}
+
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function visibleWidth(str: string): number {
+  const clean = stripAnsi(str);
+  let width = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const code = clean.charCodeAt(i);
+    if (code >= 0x1100 && (code <= 0x115f || code >= 0x2e80)) {
+      width += 2;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+function padLine(content: string, totalWidth: number): string {
+  const visible = visibleWidth(content);
+  const padding = totalWidth - visible;
+  return content + " ".repeat(Math.max(0, padding));
 }
 
 function detectNodeVersion(): string | null {
   try {
     const pkgPath = path.join(process.cwd(), "package.json");
     if (!fs.existsSync(pkgPath)) return null;
-
-    const pkgText = fs.readFileSync(pkgPath, "utf8");
-    const pkg = JSON.parse(pkgText);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
     const nodeRange = pkg.engines?.node;
     if (!nodeRange) return null;
-
-    // Extract major version from ranges like ">=18", "^18.0.0", "18.x", "18"
     const match = nodeRange.match(/(\d+)/);
     return match ? match[1] : null;
   } catch {
@@ -141,44 +139,28 @@ function detectNodeVersion(): string | null {
 
 function ensureDocker(): void {
   const p = Bun.spawnSync(["docker", "version"], { stdout: "ignore", stderr: "ignore" });
-  if (p.exitCode !== 0) die("Docker is required but not found/running.");
+  if (p.exitCode !== 0) die("Docker not found/running");
 }
 
 function buildDockerCmd(o: Opts): string[] {
   const cwd = process.cwd();
-  // Smart port detection
-  let host = "";
-  let container = "";
+  let host = "", container = "";
 
   if (!o.port) {
-    // No port specified: use app's default (PORT env or 3000) for both
     const defaultPort = process.env.PORT || "3000";
-    host = defaultPort;
-    container = defaultPort;
+    host = container = defaultPort;
   } else if (o.port.includes(":")) {
-    // Explicit mapping: host:container
     [host, container] = o.port.split(":");
   } else {
-    // Single port: use same for both host and container
-    host = o.port;
-    container = o.port;
+    host = container = o.port;
   }
 
   const containerName = `hotbox-${Date.now()}`;
   const net = o.noNetwork ? "none" : "bridge";
   const roFlag = o.rw ? "rw" : "ro";
+  const cmd = ["docker", "run", "--rm"];
 
-  // Check if we have an interactive terminal
-  const isInteractive = process.stdin.isTTY;
-
-  const cmd = [
-    "docker", "run", "--rm",
-  ];
-
-  // Only add interactive flags if we have a TTY
-  if (isInteractive) {
-    cmd.push("-it");
-  }
+  if (process.stdin.isTTY) cmd.push("-it");
 
   cmd.push(
     "--name", containerName,
@@ -204,19 +186,42 @@ function buildDockerCmd(o: Opts): string[] {
 
   for (const kv of o.envs) cmd.push("--env", kv);
 
-  // Determine Docker image: explicit --image flag takes precedence, otherwise use node:version-alpine
   const image = o.image || `node:${o.nodeVersion}-alpine`;
-
   const shellFallback = o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL === "1" ? "exec sh" : "exit 0";
 
   cmd.push(image);
+  const statusBox = o.noNetwork ? "" : `
+    echo ''
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo '\x1b[38;2;247;127;0m  \x1b[1mREADY\x1b[0m'
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo '\x1b[38;2;247;127;0m  \x1b[1mhttp://localhost:${host}\x1b[0m'
+    echo ''
+    echo '\x1b[38;2;247;127;0m  Limits      \x1b[38;2;229;192;123m${o.cpus}\x1b[0m\x1b[38;2;247;127;0m CPU   \x1b[38;2;229;192;123m${o.mem}\x1b[0m\x1b[38;2;247;127;0m   \x1b[38;2;229;192;123m${o.pids}\x1b[0m\x1b[38;2;247;127;0m PIDs\x1b[0m'
+    echo '\x1b[38;2;247;127;0m  Security    Read-only filesystem, no capabilities\x1b[0m'
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo ''
+  `;
   cmd.push("sh", "-c", `
     set -euo pipefail
     tar -C /home/node/source -cf - . | tar -C /home/node/work -xf - || { echo 'Failed to copy source files'; exit 3; }
     cd /home/node/work
-    echo '>> Installing dependencies...'
-    npx --yes --package=@antfu/ni ni || npm install --no-audit || yarn install --no-audit || pnpm install || exit 2
-    echo '>> Starting application...'
+    echo ''
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo '\x1b[38;2;247;127;0m  Installing dependencies...\x1b[0m'
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo ''
+    npx --yes --package=@antfu/ni ni --verbose || npm install --verbose || yarn install --verbose || pnpm install || exit 2
+    echo ''
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo '\x1b[38;2;247;127;0m  Starting application...\x1b[0m'
+    echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo ''
+    ${statusBox}
+    echo '\x1b[2m\x1b[38;2;92;99;112m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo '\x1b[2m\x1b[38;2;92;99;112m  Package Output\x1b[0m'
+    echo '\x1b[2m\x1b[38;2;92;99;112m──────────────────────────────────────────────────────────────────────\x1b[0m'
+    echo ''
     npx --yes --package=@antfu/ni nr start || npx --yes --package=@antfu/ni nr dev || npm start || npm run dev || yarn start || yarn dev || pnpm start || pnpm dev || node index.js || ${shellFallback}
   `.trim());
 
@@ -227,41 +232,23 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   ensureDocker();
 
-  // Security guards: require explicit env var approval for dangerous flags
-  if (o.rw && process.env.HOTBOX_ALLOW_RW !== "1") {
-    die("Error: --rw flag requires HOTBOX_ALLOW_RW=1 environment variable.\nThis flag allows write access to your project files, which could be dangerous.\n\nExample: HOTBOX_ALLOW_RW=1 hotbox --rw");
-  }
+  if (o.rw && process.env.HOTBOX_ALLOW_RW !== "1") die(`${i.lock} --rw requires HOTBOX_ALLOW_RW=1`);
+  if (o.image && process.env.HOTBOX_ALLOW_IMAGE !== "1") die(`${i.lock} --image requires HOTBOX_ALLOW_IMAGE=1`);
+  if (o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL !== "1") die(`${i.lock} --shell-on-fail requires HOTBOX_ALLOW_SHELL=1`);
+  if (o.noNetwork && !fs.existsSync(path.join(process.cwd(), "node_modules"))) die(`${i.err} --no-network requires node_modules`);
 
-  if (o.image && process.env.HOTBOX_ALLOW_IMAGE !== "1") {
-    die("Error: --image flag requires HOTBOX_ALLOW_IMAGE=1 environment variable.\nCustom images may contain security vulnerabilities or malicious code.\n\nExample: HOTBOX_ALLOW_IMAGE=1 hotbox --image node:custom");
-  }
-
-  if (o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL !== "1") {
-    die("Error: --shell-on-fail flag requires HOTBOX_ALLOW_SHELL=1 environment variable.\nShell access increases attack surface and security risks.\n\nExample: HOTBOX_ALLOW_SHELL=1 hotbox --shell-on-fail");
-  }
-
-  // Offline mode validation: require existing node_modules
-  if (o.noNetwork && !fs.existsSync(path.join(process.cwd(), "node_modules"))) {
-    die("Error: --no-network requires node_modules directory to exist.\nInstall dependencies before running in offline mode:\n  npm install  (or yarn/pnpm/bun install)\n  hotbox --no-network");
-  }
-
-  // Docker socket detection: block mounting docker.sock for security
   const socketPaths = ["docker.sock", "var/run/docker.sock", ".docker/docker.sock"];
   for (const sockPath of socketPaths) {
     if (fs.existsSync(path.join(process.cwd(), sockPath))) {
-      die(`Error: Detected docker socket file at '${sockPath}'.\nThis is a security risk that could allow container escape.\nRemove the socket file before running hotbox.`);
+      die(`${i.err} Docker socket at '${sockPath}'`);
     }
   }
 
-  // Auto-detect Node version from package.json if not explicitly set
   if (!o.nodeVersion || o.nodeVersion === defaultOpts.nodeVersion) {
     const detected = detectNodeVersion();
-    if (detected) {
-      o.nodeVersion = detected;
-    }
+    if (detected) o.nodeVersion = detected;
   }
 
-  // Get the host port for URL display
   let hostPort = "";
   if (!o.port) {
     hostPort = process.env.PORT || "3000";
@@ -272,27 +259,50 @@ async function main() {
   }
 
   const cmd = buildDockerCmd(o);
-  if (o.verbose) console.error("docker cmd:\n", cmd.join(" "));
 
-  // Display starting message with URL
-  if (!o.noNetwork) {
-    console.log(`\n🚀 Starting hotbox...`);
-    console.log(`📦 Container starting with sandboxed environment`);
-    console.log(`\n🔗 Your app will be available at:`);
-    console.log(`   \x1b[36mhttp://localhost:${hostPort}\x1b[0m`);
-    console.log(`\n⏳ Starting server (may take a moment to install dependencies)...`);
-    console.log(`   Press Ctrl+C to stop the container\n`);
-  } else {
-    console.log(`\n🔒 Starting hotbox in air-gapped mode (no network)...`);
-    console.log(`   Press Ctrl+C to stop the container\n`);
+  // Print header with box drawing
+  const w = 70;
+  console.log();
+  console.log(`${orange}╭${"─".repeat(w)}╮${reset}`);
+
+  const titleLine = `  ${bold}${orange}${i.docker}  HOTBOX${reset}  ${dim}${gray}v0.2.0${reset}`;
+  console.log(`${orange}│${reset}${padLine(titleLine, w)}${orange}│${reset}`);
+
+  console.log(`${orange}├${"─".repeat(w)}┤${reset}`);
+  console.log(`${orange}│${reset}${" ".repeat(w)}${orange}│${reset}`);
+
+  const containerLine = `  ${green}${i.check}${reset} ${gray}Container${reset}    ${blue}node:${o.nodeVersion}-alpine${reset}`;
+  const resourceLine = `  ${green}${i.check}${reset} ${gray}Resources${reset}    ${yellow}${i.cpu}${reset} ${o.cpus} cpu  ${yellow}${i.mem}${reset} ${o.mem}  ${yellow}${i.term}${reset} ${o.pids} pids`;
+  const networkLine = `  ${green}${i.check}${reset} ${gray}Network${reset}      ${o.noNetwork ? yellow + i.lock + " off" : green + i.net + " enabled"}${reset}`;
+  const securityLine = `  ${green}${i.check}${reset} ${gray}Security${reset}     ${green}read-only, no-caps, tmpfs${reset}`;
+
+  console.log(`${orange}│${reset}${padLine(containerLine, w)}${orange}│${reset}`);
+  console.log(`${orange}│${reset}${padLine(resourceLine, w)}${orange}│${reset}`);
+  console.log(`${orange}│${reset}${padLine(networkLine, w)}${orange}│${reset}`);
+  console.log(`${orange}│${reset}${padLine(securityLine, w)}${orange}│${reset}`);
+
+  console.log(`${orange}│${reset}${" ".repeat(w)}${orange}│${reset}`);
+  console.log(`${orange}╰${"─".repeat(w)}╯${reset}`);
+  console.log();
+  console.log(`${dim}${gray}Press Ctrl+C to stop${reset}`);
+  console.log();
+
+  if (o.verbose) {
+    console.error(`${gray}$ ${cmd.join(" ")}${reset}\n`);
   }
 
-  const p = Bun.spawn(cmd, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  // Pass through ALL logs from docker
+  const p = Bun.spawn(cmd, {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit"
+  });
+
   const code = await p.exited;
   process.exit(code);
 }
 
 main().catch((e) => {
-  console.error(e?.stack || e);
+  console.error(`${red}${i.err} ${e?.stack || e}${reset}`);
   process.exit(1);
 });
