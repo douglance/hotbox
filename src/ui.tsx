@@ -21,11 +21,11 @@ export function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }
   const statusBoxWidth = 45;
   const logBoxWidth = termWidth - statusBoxWidth - 3;
 
-  // Animate fire
+  // Animate fire - sync with parent render throttle
   useEffect(() => {
     const interval = setInterval(() => {
       setFrameIndex((prev) => (prev + 1) % flames.length);
-    }, 100);
+    }, 200); // Slower animation (200ms) for smoother rendering
     return () => clearInterval(interval);
   }, []);
 

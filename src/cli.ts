@@ -283,27 +283,28 @@ async function main() {
 
   const logs: string[] = [];
   let rerender: ((props: any) => void) | null = null;
-  let rerenderScheduled = false;
+  let lastRenderTime = 0;
+  const RENDER_THROTTLE_MS = 100; // Only rerender every 100ms max
 
   const scheduleRerender = () => {
-    if (!rerenderScheduled && rerender) {
-      rerenderScheduled = true;
-      setImmediate(() => {
-        if (rerender) {
-          rerender(
-            React.createElement(HotboxUI, {
-              nodeVersion: o.nodeVersion!,
-              cpus: o.cpus!,
-              mem: o.mem!,
-              pids: o.pids!,
-              port: hostPort,
-              noNetwork: o.noNetwork || false,
-              logs: logs.slice()
-            })
-          );
-        }
-        rerenderScheduled = false;
-      });
+    if (!rerender) return;
+
+    const now = Date.now();
+    const timeSinceLastRender = now - lastRenderTime;
+
+    if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
+      lastRenderTime = now;
+      rerender(
+        React.createElement(HotboxUI, {
+          nodeVersion: o.nodeVersion!,
+          cpus: o.cpus!,
+          mem: o.mem!,
+          pids: o.pids!,
+          port: hostPort,
+          noNetwork: o.noNetwork || false,
+          logs: logs.slice()
+        })
+      );
     }
   };
 

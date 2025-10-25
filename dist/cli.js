@@ -44,7 +44,7 @@ function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }) {
   useEffect(() => {
     const interval = setInterval(() => {
       setFrameIndex((prev) => (prev + 1) % flames.length);
-    }, 100);
+    }, 200);
     return () => clearInterval(interval);
   }, []);
   const fireColor = fireColors[frameIndex % fireColors.length];
@@ -266,24 +266,24 @@ async function main() {
   const { HotboxUI: HotboxUI2 } = await Promise.resolve().then(() => (init_ui(), exports_ui));
   const logs = [];
   let rerender = null;
-  let rerenderScheduled = false;
+  let lastRenderTime = 0;
+  const RENDER_THROTTLE_MS = 100;
   const scheduleRerender = () => {
-    if (!rerenderScheduled && rerender) {
-      rerenderScheduled = true;
-      setImmediate(() => {
-        if (rerender) {
-          rerender(React.createElement(HotboxUI2, {
-            nodeVersion: o.nodeVersion,
-            cpus: o.cpus,
-            mem: o.mem,
-            pids: o.pids,
-            port: hostPort,
-            noNetwork: o.noNetwork || false,
-            logs: logs.slice()
-          }));
-        }
-        rerenderScheduled = false;
-      });
+    if (!rerender)
+      return;
+    const now = Date.now();
+    const timeSinceLastRender = now - lastRenderTime;
+    if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
+      lastRenderTime = now;
+      rerender(React.createElement(HotboxUI2, {
+        nodeVersion: o.nodeVersion,
+        cpus: o.cpus,
+        mem: o.mem,
+        pids: o.pids,
+        port: hostPort,
+        noNetwork: o.noNetwork || false,
+        logs: logs.slice()
+      }));
     }
   };
   const p = spawn(cmd[0], cmd.slice(1), {
