@@ -260,13 +260,33 @@ async function main() {
 
   const cmd = buildDockerCmd(o);
 
+  // Animated fire effect
+  function animateFire() {
+    const fireColors = [
+      "\x1b[38;2;224;108;117m", // red
+      "\x1b[38;2;247;127;0m",   // orange
+      "\x1b[38;2;255;165;0m",   // bright orange
+      "\x1b[38;2;255;200;0m",   // yellow-orange
+    ];
+    const flames = ["▁▂", "▂▃", "▃▄", "▄▅", "▅▆", "▆▇", "▇█"];
+
+    const frames = 8;
+    for (let f = 0; f < frames; f++) {
+      const color = fireColors[f % fireColors.length];
+      const flame = flames[f % flames.length];
+      const title = `  ${color}${flame}${reset} ${bold}${orange}${i.docker}  HOTBOX${reset} ${color}${flame}${reset}  ${dim}${gray}v0.2.0${reset}`;
+
+      process.stdout.write(`\r${orange}│${reset}${padLine(title, w)}${orange}│${reset}`);
+      Bun.sleepSync(80);
+    }
+    process.stdout.write("\n");
+  }
+
   // Print header with box drawing
   const w = 70;
   console.log();
   console.log(`${orange}╭${"─".repeat(w)}╮${reset}`);
-
-  const titleLine = `  ${bold}${orange}${i.docker}  HOTBOX${reset}  ${dim}${gray}v0.2.0${reset}`;
-  console.log(`${orange}│${reset}${padLine(titleLine, w)}${orange}│${reset}`);
+  animateFire();
 
   console.log(`${orange}├${"─".repeat(w)}┤${reset}`);
   console.log(`${orange}│${reset}${" ".repeat(w)}${orange}│${reset}`);
