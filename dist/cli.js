@@ -33,20 +33,14 @@ var exports_ui = {};
 __export(exports_ui, {
   HotboxUI: () => HotboxUI
 });
-import { createElement, useState, useEffect } from "react";
+import { createElement } from "react";
 import { Box, Text, useStdout } from "ink";
 function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }) {
-  const [frameIndex, setFrameIndex] = useState(0);
   const { stdout } = useStdout();
   const termWidth = stdout?.columns || 120;
   const statusBoxWidth = 45;
   const logBoxWidth = termWidth - statusBoxWidth - 3;
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % flames.length);
-    }, 200);
-    return () => clearInterval(interval);
-  }, []);
+  const frameIndex = Math.floor(Date.now() / 200) % flames.length;
   const fireColor = fireColors[frameIndex % fireColors.length];
   const flame = flames[frameIndex];
   const termHeight = stdout?.rows || 30;

@@ -1,4 +1,4 @@
-import { createElement, useState, useEffect } from 'react';
+import { createElement } from 'react';
 import { Box, Text, useStdout } from 'ink';
 
 export interface HotboxUIProps {
@@ -15,20 +15,13 @@ const fireColors = ['#e06c75', '#f77f00', '#ffa500', '#ffc800'];
 const flames = ['▁▂', '▂▃', '▃▄', '▄▅', '▅▆', '▆▇', '▇█'];
 
 export function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }: HotboxUIProps) {
-  const [frameIndex, setFrameIndex] = useState(0);
   const { stdout } = useStdout();
   const termWidth = stdout?.columns || 120;
   const statusBoxWidth = 45;
   const logBoxWidth = termWidth - statusBoxWidth - 3;
 
-  // Animate fire - sync with parent render throttle
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % flames.length);
-    }, 200); // Slower animation (200ms) for smoother rendering
-    return () => clearInterval(interval);
-  }, []);
-
+  // Calculate fire frame based on timestamp (no state updates)
+  const frameIndex = Math.floor(Date.now() / 200) % flames.length;
   const fireColor = fireColors[frameIndex % fireColors.length];
   const flame = flames[frameIndex];
 
