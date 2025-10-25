@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawnSync, spawn } from "node:child_process";
 
 // ANSI color codes (Atom One Dark + Fire)
 const reset = "\x1b[0m";
@@ -13,6 +14,17 @@ const cyan = "\x1b[38;2;86;182;194m";
 const gray = "\x1b[38;2;92;99;112m";
 const dim = "\x1b[2m";
 const bold = "\x1b[1m";
+
+// ANSI control codes
+const clearScreen = "\x1b[2J";
+const clearLine = "\x1b[2K";
+const hideCursor = "\x1b[?25l";
+const showCursor = "\x1b[?25h";
+const saveCursor = "\x1b[s";
+const restoreCursor = "\x1b[u";
+const moveCursor = (row: number, col: number) => `\x1b[${row};${col}H`;
+const altScreenOn = "\x1b[?1049h";
+const altScreenOff = "\x1b[?1049l";
 
 // Nerd Font icons
 const i = {
@@ -138,8 +150,8 @@ function detectNodeVersion(): string | null {
 }
 
 function ensureDocker(): void {
-  const p = Bun.spawnSync(["docker", "version"], { stdout: "ignore", stderr: "ignore" });
-  if (p.exitCode !== 0) die("Docker not found/running");
+  const p = spawnSync("docker", ["version"], { stdio: "ignore" });
+  if (p.status !== 0) die("Docker not found/running");
 }
 
 function buildDockerCmd(o: Opts): string[] {
@@ -260,66 +272,80 @@ async function main() {
 
   const cmd = buildDockerCmd(o);
 
-  // Animated fire effect
-  function animateFire() {
-    const fireColors = [
-      "\x1b[38;2;224;108;117m", // red
-      "\x1b[38;2;247;127;0m",   // orange
-      "\x1b[38;2;255;165;0m",   // bright orange
-      "\x1b[38;2;255;200;0m",   // yellow-orange
-    ];
-    const flames = ["▁▂", "▂▃", "▃▄", "▄▅", "▅▆", "▆▇", "▇█"];
-
-    const frames = 8;
-    for (let f = 0; f < frames; f++) {
-      const color = fireColors[f % fireColors.length];
-      const flame = flames[f % flames.length];
-      const title = `  ${color}${flame}${reset} ${bold}${orange}${i.docker}  HOTBOX${reset} ${color}${flame}${reset}  ${dim}${gray}v0.2.0${reset}`;
-
-      process.stdout.write(`\r${orange}│${reset}${padLine(title, w)}${orange}│${reset}`);
-      Bun.sleepSync(80);
-    }
-    process.stdout.write("\n");
-  }
-
-  // Print header with box drawing
-  const w = 70;
-  console.log();
-  console.log(`${orange}╭${"─".repeat(w)}╮${reset}`);
-  animateFire();
-
-  console.log(`${orange}├${"─".repeat(w)}┤${reset}`);
-  console.log(`${orange}│${reset}${" ".repeat(w)}${orange}│${reset}`);
-
-  const containerLine = `  ${green}${i.check}${reset} ${gray}Container${reset}    ${blue}node:${o.nodeVersion}-alpine${reset}`;
-  const resourceLine = `  ${green}${i.check}${reset} ${gray}Resources${reset}    ${yellow}${i.cpu}${reset} ${o.cpus} cpu  ${yellow}${i.mem}${reset} ${o.mem}  ${yellow}${i.term}${reset} ${o.pids} pids`;
-  const networkLine = `  ${green}${i.check}${reset} ${gray}Network${reset}      ${o.noNetwork ? yellow + i.lock + " off" : green + i.net + " enabled"}${reset}`;
-  const securityLine = `  ${green}${i.check}${reset} ${gray}Security${reset}     ${green}read-only, no-caps, tmpfs${reset}`;
-
-  console.log(`${orange}│${reset}${padLine(containerLine, w)}${orange}│${reset}`);
-  console.log(`${orange}│${reset}${padLine(resourceLine, w)}${orange}│${reset}`);
-  console.log(`${orange}│${reset}${padLine(networkLine, w)}${orange}│${reset}`);
-  console.log(`${orange}│${reset}${padLine(securityLine, w)}${orange}│${reset}`);
-
-  console.log(`${orange}│${reset}${" ".repeat(w)}${orange}│${reset}`);
-  console.log(`${orange}╰${"─".repeat(w)}╯${reset}`);
-  console.log();
-  console.log(`${dim}${gray}Press Ctrl+C to stop${reset}`);
-  console.log();
-
   if (o.verbose) {
     console.error(`${gray}$ ${cmd.join(" ")}${reset}\n`);
   }
 
-  // Pass through ALL logs from docker
-  const p = Bun.spawn(cmd, {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit"
+  // Use Ink TUI
+  const React = await import("react");
+  const { render } = await import("ink");
+  const { HotboxUI } = await import("./ui.js");
+
+  const logs: string[] = [];
+  let rerender: ((props: any) => void) | null = null;
+
+  // Spawn docker process
+  const p = spawn(cmd[0], cmd.slice(1), {
+    stdio: ['inherit', 'pipe', 'pipe']
   });
 
-  const code = await p.exited;
-  process.exit(code);
+  // Stream stdout
+  p.stdout.on('data', (chunk) => {
+    const text = chunk.toString();
+    const lines = text.split('\n').filter(l => l.trim());
+    logs.push(...lines);
+    if (rerender) {
+      rerender({
+        nodeVersion: o.nodeVersion!,
+        cpus: o.cpus!,
+        mem: o.mem!,
+        pids: o.pids!,
+        port: hostPort,
+        noNetwork: o.noNetwork || false,
+        logs: logs.slice()
+      });
+    }
+  });
+
+  // Stream stderr
+  p.stderr.on('data', (chunk) => {
+    const text = chunk.toString();
+    const lines = text.split('\n').filter(l => l.trim());
+    logs.push(...lines);
+    if (rerender) {
+      rerender({
+        nodeVersion: o.nodeVersion!,
+        cpus: o.cpus!,
+        mem: o.mem!,
+        pids: o.pids!,
+        port: hostPort,
+        noNetwork: o.noNetwork || false,
+        logs: logs.slice()
+      });
+    }
+  });
+
+  // Render UI
+  const { rerender: rerenderFn } = render(
+    React.createElement(HotboxUI, {
+      nodeVersion: o.nodeVersion!,
+      cpus: o.cpus!,
+      mem: o.mem!,
+      pids: o.pids!,
+      port: hostPort,
+      noNetwork: o.noNetwork || false,
+      logs: logs
+    })
+  );
+  rerender = rerenderFn;
+
+  // Wait for process to exit
+  await new Promise<void>((resolve) => {
+    p.on('close', (code) => {
+      process.exit(code || 0);
+      resolve();
+    });
+  });
 }
 
 main().catch((e) => {

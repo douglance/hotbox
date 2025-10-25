@@ -1,6 +1,7 @@
 {
   "name": "@douglance/hotbox",
   "version": "0.2.0",
+  "type": "module",
   "bin": {
     "hotbox": "bin/hotbox"
   },
@@ -11,15 +12,22 @@
   },
   "files": [
     "bin/",
-    "src/",
+    "dist/",
     "scripts/",
     "README.md"
   ],
   "license": "MIT",
   "scripts": {
-    "build": "bun build ./src/cli.ts --compile --outfile=bin/hotbox",
+    "build": "bun build ./src/cli.ts --outfile=dist/cli.js --target=node --external ink --external react",
     "prepack": "node ./scripts/postinstall.mjs --build-local",
     "postinstall": "node ./scripts/postinstall.mjs",
     "dev": "bun run src/cli.ts -- --help"
+  },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12"
   }
 }
