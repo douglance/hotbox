@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 /**
  * hotbox — run current Node project in a hardened Docker sandbox.
  *
@@ -40,6 +43,7 @@ type Opts = {
   envs: string[];
   rw?: boolean;
   verbose?: boolean;
+  shellOnFail?: boolean;
 };
 
 const defaultOpts: Opts = {
@@ -64,6 +68,7 @@ function parseArgs(argv: string[]): Opts {
     else if (a === "--env") o.envs.push(argv[++i]);
     else if (a === "--rw") o.rw = true;
     else if (a === "--verbose") o.verbose = true;
+    else if (a === "--shell-on-fail") o.shellOnFail = true;
     else if (a === "--help" || a === "-h") help(0);
     else if (a.startsWith("-")) die(`Unknown flag: ${a}`);
   }
@@ -83,13 +88,22 @@ Options:
   --cpus            CPU limit (default 0.5)
   --pids            PIDs limit (default 200)
   -i, --image       Docker base image (overrides --node-version)
+                    ⚠️  Requires HOTBOX_ALLOW_IMAGE=1
   --node-version    Node.js version (e.g., 18, 20, 22)
                     Auto-detected from package.json engines.node if present
                     Default: 22
   --env             Pass KEY=VAL (repeatable)
   --rw              Mount project read-write (default read-only)
+                    ⚠️  Requires HOTBOX_ALLOW_RW=1
+  --shell-on-fail   Drop to shell if app fails to start
+                    ⚠️  Requires HOTBOX_ALLOW_SHELL=1
   --verbose         Print docker invocation
   -h, --help        Show help
+
+Security Notes:
+  • Flags marked with ⚠️  require explicit environment variable approval
+  • Docker socket files are blocked for security
+  • Offline mode (--no-network) requires existing node_modules
 
 Examples:
   hotbox                    # Auto-detect port and Node version
@@ -97,6 +111,7 @@ Examples:
   hotbox --node-version 18  # Use Node 18
   hotbox -p 9000:3000       # Map host 9000 to container 3000
   hotbox -n                 # No network access
+  HOTBOX_ALLOW_RW=1 hotbox --rw  # Allow write access
 `);
   process.exit(code);
 }
@@ -108,8 +123,7 @@ function die(msg: string): never {
 
 function detectNodeVersion(): string | null {
   try {
-    const fs = require("fs");
-    const pkgPath = `${process.cwd()}/package.json`;
+    const pkgPath = path.join(process.cwd(), "package.json");
     if (!fs.existsSync(pkgPath)) return null;
 
     const pkgText = fs.readFileSync(pkgPath, "utf8");
@@ -174,6 +188,7 @@ function buildDockerCmd(o: Opts): string[] {
     "--cpus", o.cpus!,
     "--security-opt", "no-new-privileges:true",
     "--cap-drop", "ALL",
+    "--read-only",
     "--tmpfs", "/tmp:exec,uid=1000,gid=1000,size=64m",
     "--tmpfs", "/home/node/.npm:exec,uid=1000,gid=1000,size=32m",
     "--tmpfs", "/home/node/.cache:exec,uid=1000,gid=1000,size=32m",
@@ -192,19 +207,17 @@ function buildDockerCmd(o: Opts): string[] {
   // Determine Docker image: explicit --image flag takes precedence, otherwise use node:version-alpine
   const image = o.image || `node:${o.nodeVersion}-alpine`;
 
+  const shellFallback = o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL === "1" ? "exec sh" : "exit 0";
+
   cmd.push(image);
   cmd.push("sh", "-c", `
     set -euo pipefail
-    cp -r /home/node/source/* /home/node/work/
-    cp /home/node/source/package*.json /home/node/work/ 2>/dev/null || true
-    cp /home/node/source/yarn.lock /home/node/work/ 2>/dev/null || true
-    cp /home/node/source/pnpm-lock.yaml /home/node/work/ 2>/dev/null || true
-    cp /home/node/source/bun.lockb /home/node/work/ 2>/dev/null || true
+    tar -C /home/node/source -cf - . | tar -C /home/node/work -xf - || { echo 'Failed to copy source files'; exit 3; }
     cd /home/node/work
     echo '>> Installing dependencies...'
     npx --yes --package=@antfu/ni ni || npm install --no-audit || yarn install --no-audit || pnpm install || exit 2
     echo '>> Starting application...'
-    npx --yes --package=@antfu/ni nr start || npx --yes --package=@antfu/ni nr dev || npm start || npm run dev || yarn start || yarn dev || pnpm start || pnpm dev || node index.js || exec sh
+    npx --yes --package=@antfu/ni nr start || npx --yes --package=@antfu/ni nr dev || npm start || npm run dev || yarn start || yarn dev || pnpm start || pnpm dev || node index.js || ${shellFallback}
   `.trim());
 
   return cmd;
@@ -213,6 +226,32 @@ function buildDockerCmd(o: Opts): string[] {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   ensureDocker();
+
+  // Security guards: require explicit env var approval for dangerous flags
+  if (o.rw && process.env.HOTBOX_ALLOW_RW !== "1") {
+    die("Error: --rw flag requires HOTBOX_ALLOW_RW=1 environment variable.\nThis flag allows write access to your project files, which could be dangerous.\n\nExample: HOTBOX_ALLOW_RW=1 hotbox --rw");
+  }
+
+  if (o.image && process.env.HOTBOX_ALLOW_IMAGE !== "1") {
+    die("Error: --image flag requires HOTBOX_ALLOW_IMAGE=1 environment variable.\nCustom images may contain security vulnerabilities or malicious code.\n\nExample: HOTBOX_ALLOW_IMAGE=1 hotbox --image node:custom");
+  }
+
+  if (o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL !== "1") {
+    die("Error: --shell-on-fail flag requires HOTBOX_ALLOW_SHELL=1 environment variable.\nShell access increases attack surface and security risks.\n\nExample: HOTBOX_ALLOW_SHELL=1 hotbox --shell-on-fail");
+  }
+
+  // Offline mode validation: require existing node_modules
+  if (o.noNetwork && !fs.existsSync(path.join(process.cwd(), "node_modules"))) {
+    die("Error: --no-network requires node_modules directory to exist.\nInstall dependencies before running in offline mode:\n  npm install  (or yarn/pnpm/bun install)\n  hotbox --no-network");
+  }
+
+  // Docker socket detection: block mounting docker.sock for security
+  const socketPaths = ["docker.sock", "var/run/docker.sock", ".docker/docker.sock"];
+  for (const sockPath of socketPaths) {
+    if (fs.existsSync(path.join(process.cwd(), sockPath))) {
+      die(`Error: Detected docker socket file at '${sockPath}'.\nThis is a security risk that could allow container escape.\nRemove the socket file before running hotbox.`);
+    }
+  }
 
   // Auto-detect Node version from package.json if not explicitly set
   if (!o.nodeVersion || o.nodeVersion === defaultOpts.nodeVersion) {

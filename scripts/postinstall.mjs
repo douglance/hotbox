@@ -58,7 +58,7 @@ async function main() {
 
   // Download prebuilt
   mkdirSync(BIN_DIR, { recursive: true });
-  const asset = `safenode-${triple}`;
+  const asset = `hotbox-${triple}`;
   const base = `https://github.com/${owner}/${repo}/releases/download/v${version}/${asset}`;
   const url = process.platform === "win32" ? `${base}.exe` : base;
 
