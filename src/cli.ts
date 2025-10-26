@@ -56,6 +56,7 @@ type Opts = {
   rw?: boolean;
   verbose?: boolean;
   shellOnFail?: boolean;
+  paranoid?: boolean;
 };
 
 const defaultOpts: Opts = {
@@ -72,6 +73,14 @@ function parseArgs(argv: string[]): Opts {
     const a = argv[i];
     if (a === "-p" || a === "--port") o.port = argv[++i];
     else if (a === "-n" || a === "--no-network") o.noNetwork = true;
+    else if (a === "--paranoid") {
+      o.paranoid = true;
+      // Apply stricter defaults for paranoid mode
+      o.noNetwork = true;
+      o.pids = "100";
+      o.mem = "256m";
+      o.cpus = "0.25";
+    }
     else if (a === "--mem") o.mem = argv[++i];
     else if (a === "--cpus") o.cpus = argv[++i];
     else if (a === "--pids") o.pids = argv[++i];
@@ -93,6 +102,7 @@ function help(code = 0): never {
 ${gray}Options:${reset}
   -p, --port        Port or mapping
   -n, --no-network  Disable networking
+  --paranoid        Maximum security (no net, stricter limits)
   --mem             Memory limit (512m)
   --cpus            CPU limit (0.5)
   --pids            PIDs limit (200)
@@ -170,23 +180,33 @@ function buildDockerCmd(o: Opts): string[] {
   const containerName = `hotbox-${Date.now()}`;
   const net = o.noNetwork ? "none" : "bridge";
   const roFlag = o.rw ? "rw" : "ro";
-  const cmd = ["docker", "run", "--rm"];
+  const runtime = process.env.HOTBOX_RUNTIME; // e.g. runsc (gVisor), kata-runtime
+  const cmd = ["docker", "run", "--rm", ...(runtime ? ["--runtime", runtime] : [])];
 
   if (process.stdin.isTTY) cmd.push("-it");
 
   cmd.push(
     "--name", containerName,
     "--network", net,
+    "--init",
     "--pids-limit", o.pids!,
     "--memory", o.mem!,
     "--cpus", o.cpus!,
     "--security-opt", "no-new-privileges:true",
+    // optionally add a pinned seccomp profile via env HOTBOX_SECCOMP
+    ...(process.env.HOTBOX_SECCOMP ? ["--security-opt", `seccomp=${process.env.HOTBOX_SECCOMP}`] : []),
+    // AppArmor/SELinux if available
+    ...(process.env.HOTBOX_APPARMOR ? ["--security-opt", `apparmor=${process.env.HOTBOX_APPARMOR}`] : []),
     "--cap-drop", "ALL",
     "--read-only",
-    "--tmpfs", "/tmp:exec,uid=1000,gid=1000,size=64m",
-    "--tmpfs", "/home/node/.npm:exec,uid=1000,gid=1000,size=32m",
-    "--tmpfs", "/home/node/.cache:exec,uid=1000,gid=1000,size=32m",
+    // exec only where truly needed
+    "--tmpfs", "/tmp:noexec,uid=1000,gid=1000,size=64m",
+    "--tmpfs", "/home/node/.npm:noexec,uid=1000,gid=1000,size=32m",
+    "--tmpfs", "/home/node/.cache:noexec,uid=1000,gid=1000,size=32m",
     "--tmpfs", "/home/node/work:exec,uid=1000,gid=1000,size=512m",
+    "--ipc=none", "--uts=container",
+    "--ulimit", "nofile=2048:4096",
+    "--ulimit", "nproc=256:256",
     "-v", `${cwd}:/home/node/source:${roFlag}`,
     "-w", "/home/node/work",
     "-p", `${host}:${container}`,
@@ -194,6 +214,8 @@ function buildDockerCmd(o: Opts): string[] {
     "--env", `HOST=0.0.0.0`,
     "--env", `PORT=${container}`,
     "--env", `CI=true`,
+    "--env", `NODE_OPTIONS=--disable-proto=throw`,
+    "--pull", "always",
   );
 
   for (const kv of o.envs) cmd.push("--env", kv);
@@ -216,14 +238,18 @@ function buildDockerCmd(o: Opts): string[] {
   `;
   cmd.push("sh", "-c", `
     set -euo pipefail
-    tar -C /home/node/source -cf - . | tar -C /home/node/work -xf - || { echo 'Failed to copy source files'; exit 3; }
+    tar -C /home/node/source \\
+      --exclude='.git' \\
+      --exclude='node_modules' \\
+      -cf - . | tar -C /home/node/work -xf - || { echo 'Failed to copy source files'; exit 3; }
     cd /home/node/work
     echo ''
     echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
     echo '\x1b[38;2;247;127;0m  Installing dependencies...\x1b[0m'
     echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
     echo ''
-    npx --yes --package=@antfu/ni ni --verbose || npm install --verbose || yarn install --verbose || pnpm install || exit 2
+    # Pin ni version to reduce supply-chain risk
+    npx --yes --package=@antfu/ni@0.22.0 ni --verbose || npm ci --verbose || yarn install --frozen-lockfile --verbose || pnpm i --frozen-lockfile || exit 2
     echo ''
     echo '\x1b[38;2;247;127;0m──────────────────────────────────────────────────────────────────────\x1b[0m'
     echo '\x1b[38;2;247;127;0m  Starting application...\x1b[0m'
@@ -234,7 +260,7 @@ function buildDockerCmd(o: Opts): string[] {
     echo '\x1b[2m\x1b[38;2;92;99;112m  Package Output\x1b[0m'
     echo '\x1b[2m\x1b[38;2;92;99;112m──────────────────────────────────────────────────────────────────────\x1b[0m'
     echo ''
-    npx --yes --package=@antfu/ni nr start || npx --yes --package=@antfu/ni nr dev || npm start || npm run dev || yarn start || yarn dev || pnpm start || pnpm dev || node index.js || ${shellFallback}
+    npx --yes --package=@antfu/ni@0.22.0 nr start || npx --yes --package=@antfu/ni@0.22.0 nr dev || npm start || npm run dev || yarn start || yarn dev || pnpm start || pnpm dev || node index.js || ${shellFallback}
   `.trim());
 
   return cmd;
@@ -244,9 +270,9 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   ensureDocker();
 
-  if (o.rw && process.env.HOTBOX_ALLOW_RW !== "1") die(`${i.lock} --rw requires HOTBOX_ALLOW_RW=1`);
-  if (o.image && process.env.HOTBOX_ALLOW_IMAGE !== "1") die(`${i.lock} --image requires HOTBOX_ALLOW_IMAGE=1`);
-  if (o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL !== "1") die(`${i.lock} --shell-on-fail requires HOTBOX_ALLOW_SHELL=1`);
+  if (o.rw && process.env.HOTBOX_ALLOW_RW !== "1") die(`${i.lock} --rw blocked (allows host filesystem writes). Set HOTBOX_ALLOW_RW=1 to override.`);
+  if (o.image && process.env.HOTBOX_ALLOW_IMAGE !== "1") die(`${i.lock} --image blocked for security. Set HOTBOX_ALLOW_IMAGE=1 to override.`);
+  if (o.shellOnFail && process.env.HOTBOX_ALLOW_SHELL !== "1") die(`${i.lock} --shell-on-fail blocked (provides container shell access). Set HOTBOX_ALLOW_SHELL=1 to override.`);
   if (o.noNetwork && !fs.existsSync(path.join(process.cwd(), "node_modules"))) die(`${i.err} --no-network requires node_modules`);
 
   const socketPaths = ["docker.sock", "var/run/docker.sock", ".docker/docker.sock"];

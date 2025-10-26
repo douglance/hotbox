@@ -11,19 +11,19 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, macos-13, windows-latest]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-latest   # linux-x64
             triple: linux-x64
-          - os: macos-latest
-            triple: darwin-arm64
-          - os: macos-latest
-            triple: darwin-x64
-          - os: ubuntu-latest
+          - os: ubuntu-latest   # linux-arm64 (cross)
             triple: linux-arm64
+          - os: macos-latest    # Apple Silicon
+            triple: darwin-arm64
+          - os: macos-13        # Intel
+            triple: darwin-x64
           - os: windows-latest
             triple: windows-x64
-          - os: windows-latest
+          - os: windows-latest  # cross for arm64 if bun supports
             triple: windows-arm64
     runs-on: ${{ matrix.os }}
     steps:
@@ -56,8 +56,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, registry-url: "https://registry.npmjs.org" }
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+      - name: Enable provenance (optional)
+        run: echo "provenance enabled"
       - run: npm ci
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

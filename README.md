@@ -37,8 +37,11 @@ hotbox -p 8080
 # Map different ports (host:container)
 hotbox -p 9000:3000
 
-# No network (air-gapped)
+# No network (air-gapped). Requires preinstalled node_modules in your project.
 hotbox -n
+
+# Paranoid mode (maximum security: no network, stricter limits)
+hotbox --paranoid
 
 # Custom resource limits
 hotbox --mem 1g --cpus 1.0 --pids 150
@@ -91,6 +94,13 @@ hotbox --help
 | **Resource limits** | CPU, memory, PIDs constraints |
 | **Network isolation** | Optional `--no-network` for air-gapped execution |
 | **Non-root user** | Runs as `node` user, not root |
+| **Seccomp/AppArmor** | Supply `HOTBOX_SECCOMP`/`HOTBOX_APPARMOR` to enforce syscall/LSM policies |
+| **Noexec tmpfs** | `noexec` everywhere except workdir to reduce RCE surface |
+| **IPC/UTS isolation** | Container-level IPC and UTS namespaces |
+| **ulimit controls** | File descriptor and process limits enforced |
+| **Supply chain hardening** | SHA256 verification of binaries, pinned ni version |
+| **Prototype pollution protection** | `NODE_OPTIONS=--disable-proto=throw` by default |
+| **Alternative runtimes** | Support for gVisor/kata via `HOTBOX_RUNTIME` env var |
 
 ## CLI Options
 
@@ -98,6 +108,7 @@ hotbox --help
 |--------|-------------|---------|
 | `-p, --port` | Port number or host:container mapping | Auto-detect (app's port) |
 | `-n, --no-network` | Disable networking | `false` |
+| `--paranoid` | Maximum security mode (no network, 256m RAM, 0.25 CPU, 100 PIDs) | `false` |
 | `--mem` | Memory limit | `512m` |
 | `--cpus` | CPU cores limit | `0.5` |
 | `--pids` | Process IDs limit | `200` |
@@ -125,6 +136,19 @@ hotbox automatically selects the appropriate Node.js version:
    - `"node": "18.x"` → Node 18
 3. **Default**: Falls back to Node 22 if no version specified or detected
 4. **Custom image** (`--image`): Overrides all version detection
+
+### Environment Variables
+
+Advanced security and runtime configuration:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `HOTBOX_ALLOW_RW` | Enable `--rw` flag | `HOTBOX_ALLOW_RW=1 hotbox --rw` |
+| `HOTBOX_ALLOW_IMAGE` | Enable custom `--image` flag | `HOTBOX_ALLOW_IMAGE=1 hotbox -i alpine` |
+| `HOTBOX_ALLOW_SHELL` | Enable `--shell-on-fail` flag | `HOTBOX_ALLOW_SHELL=1 hotbox --shell-on-fail` |
+| `HOTBOX_SECCOMP` | Path to custom seccomp profile | `HOTBOX_SECCOMP=/path/to/profile.json` |
+| `HOTBOX_APPARMOR` | AppArmor profile name | `HOTBOX_APPARMOR=docker-default` |
+| `HOTBOX_RUNTIME` | Alternative container runtime | `HOTBOX_RUNTIME=runsc` (gVisor) |
 
 ## Development
 
