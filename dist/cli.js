@@ -1,58 +1,4 @@
 #!/usr/bin/env node
-import { createRequire } from "node:module";
-var __create = Object.create;
-var __getProtoOf = Object.getPrototypeOf;
-var __defProp = Object.defineProperty;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __toESM = (mod, isNodeMode, target) => {
-  target = mod != null ? __create(__getProtoOf(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
-  for (let key of __getOwnPropNames(mod))
-    if (!__hasOwnProp.call(to, key))
-      __defProp(to, key, {
-        get: () => mod[key],
-        enumerable: true
-      });
-  return to;
-};
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, {
-      get: all[name],
-      enumerable: true,
-      configurable: true,
-      set: (newValue) => all[name] = () => newValue
-    });
-};
-var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
-
-// src/ui.tsx
-var exports_ui = {};
-__export(exports_ui, {
-  HotboxUI: () => HotboxUI
-});
-import { createElement } from "react";
-import { Box, Text, useStdout } from "ink";
-function HotboxUI({ nodeVersion, cpus, mem, pids, port, noNetwork, logs }) {
-  const { stdout } = useStdout();
-  const termWidth = stdout?.columns || 120;
-  const statusBoxWidth = 45;
-  const logBoxWidth = termWidth - statusBoxWidth - 3;
-  const frameIndex = Math.floor(Date.now() / 200) % flames.length;
-  const fireColor = fireColors[frameIndex % fireColors.length];
-  const flame = flames[frameIndex];
-  const termHeight = stdout?.rows || 30;
-  const maxLogs = termHeight - 3;
-  const displayLogs = logs.slice(-maxLogs);
-  return createElement(Box, { flexDirection: "row", width: termWidth }, createElement(Box, { flexDirection: "column", width: statusBoxWidth, borderStyle: "round", borderColor: "#f77f00", paddingX: 1 }, createElement(Box, { justifyContent: "center", marginBottom: 1 }, createElement(Text, { bold: true }, createElement(Text, { color: fireColor }, flame), " ", createElement(Text, { color: "#f77f00" }, " HOTBOX"), " ", createElement(Text, { color: fireColor }, flame))), createElement(Box, { marginBottom: 1 }, createElement(Text, { dimColor: true }, " Container   "), createElement(Text, { color: "#61afef" }, `node:${nodeVersion}-alpine`)), createElement(Box, { marginBottom: 1 }, createElement(Text, { dimColor: true }, " Resources   "), createElement(Text, { color: "#e5c07b" }, cpus), createElement(Text, null, " CPU  "), createElement(Text, { color: "#e5c07b" }, mem), createElement(Text, null, "  "), createElement(Text, { color: "#e5c07b" }, pids), createElement(Text, null, " PIDs")), createElement(Box, { marginBottom: 1 }, createElement(Text, { dimColor: true }, " Network     "), noNetwork ? createElement(Text, { color: "#e5c07b" }, " off") : createElement(Text, { color: "#98c379" }, " enabled")), createElement(Box, { marginBottom: 1 }, createElement(Text, { dimColor: true }, " Security    "), createElement(Text, { color: "#98c379" }, "read-only")), createElement(Box, { marginTop: 1, borderStyle: "single", borderColor: "#f77f00", paddingX: 1 }, createElement(Text, { bold: true, color: "#f77f00" }, `http://localhost:${port}`)), createElement(Box, { marginTop: "auto" }, createElement(Text, { dimColor: true }, "Press Ctrl+C to stop"))), createElement(Box, { flexDirection: "column", width: logBoxWidth, borderStyle: "round", borderColor: "#5c6370", paddingX: 1, marginLeft: 1 }, createElement(Box, { borderBottom: true, borderColor: "#5c6370", marginBottom: 1 }, createElement(Text, { dimColor: true }, "Logs")), createElement(Box, { flexDirection: "column" }, displayLogs.length === 0 ? createElement(Text, { dimColor: true }, "Waiting for logs...") : displayLogs.map((log, idx) => createElement(Text, { key: idx, wrap: "truncate-end" }, log)))));
-}
-var fireColors, flames;
-var init_ui = __esm(() => {
-  fireColors = ["#e06c75", "#f77f00", "#ffa500", "#ffc800"];
-  flames = ["▁▂", "▂▃", "▃▄", "▄▅", "▅▆", "▆▇", "▇█"];
-});
 
 // src/cli.ts
 import * as fs from "node:fs";
@@ -255,58 +201,9 @@ async function main() {
     console.error(`${gray}$ ${cmd.join(" ")}${reset}
 `);
   }
-  const React = await import("react");
-  const { render } = await import("ink");
-  const { HotboxUI: HotboxUI2 } = await Promise.resolve().then(() => (init_ui(), exports_ui));
-  const logs = [];
-  let rerender = null;
-  let lastRenderTime = 0;
-  const RENDER_THROTTLE_MS = 100;
-  const scheduleRerender = () => {
-    if (!rerender)
-      return;
-    const now = Date.now();
-    const timeSinceLastRender = now - lastRenderTime;
-    if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
-      lastRenderTime = now;
-      rerender(React.createElement(HotboxUI2, {
-        nodeVersion: o.nodeVersion,
-        cpus: o.cpus,
-        mem: o.mem,
-        pids: o.pids,
-        port: hostPort,
-        noNetwork: o.noNetwork || false,
-        logs: logs.slice()
-      }));
-    }
-  };
   const p = spawn(cmd[0], cmd.slice(1), {
-    stdio: ["inherit", "pipe", "pipe"]
+    stdio: "inherit"
   });
-  p.stdout.on("data", (chunk) => {
-    const text = chunk.toString();
-    const lines = text.split(`
-`).filter((l) => l.trim());
-    logs.push(...lines);
-    scheduleRerender();
-  });
-  p.stderr.on("data", (chunk) => {
-    const text = chunk.toString();
-    const lines = text.split(`
-`).filter((l) => l.trim());
-    logs.push(...lines);
-    scheduleRerender();
-  });
-  const { rerender: rerenderFn } = render(React.createElement(HotboxUI2, {
-    nodeVersion: o.nodeVersion,
-    cpus: o.cpus,
-    mem: o.mem,
-    pids: o.pids,
-    port: hostPort,
-    noNetwork: o.noNetwork || false,
-    logs
-  }));
-  rerender = rerenderFn;
   await new Promise((resolve) => {
     p.on("close", (code) => {
       process.exit(code || 0);

@@ -276,72 +276,10 @@ async function main() {
     console.error(`${gray}$ ${cmd.join(" ")}${reset}\n`);
   }
 
-  // Use Ink TUI
-  const React = await import("react");
-  const { render } = await import("ink");
-  const { HotboxUI } = await import("./ui.js");
-
-  const logs: string[] = [];
-  let rerender: ((props: any) => void) | null = null;
-  let lastRenderTime = 0;
-  const RENDER_THROTTLE_MS = 100; // Only rerender every 100ms max
-
-  const scheduleRerender = () => {
-    if (!rerender) return;
-
-    const now = Date.now();
-    const timeSinceLastRender = now - lastRenderTime;
-
-    if (timeSinceLastRender >= RENDER_THROTTLE_MS) {
-      lastRenderTime = now;
-      rerender(
-        React.createElement(HotboxUI, {
-          nodeVersion: o.nodeVersion!,
-          cpus: o.cpus!,
-          mem: o.mem!,
-          pids: o.pids!,
-          port: hostPort,
-          noNetwork: o.noNetwork || false,
-          logs: logs.slice()
-        })
-      );
-    }
-  };
-
-  // Spawn docker process
+  // Spawn docker process with inherited stdio for direct streaming
   const p = spawn(cmd[0], cmd.slice(1), {
-    stdio: ['inherit', 'pipe', 'pipe']
+    stdio: 'inherit'
   });
-
-  // Stream stdout
-  p.stdout.on('data', (chunk) => {
-    const text = chunk.toString();
-    const lines = text.split('\n').filter(l => l.trim());
-    logs.push(...lines);
-    scheduleRerender();
-  });
-
-  // Stream stderr
-  p.stderr.on('data', (chunk) => {
-    const text = chunk.toString();
-    const lines = text.split('\n').filter(l => l.trim());
-    logs.push(...lines);
-    scheduleRerender();
-  });
-
-  // Render UI
-  const { rerender: rerenderFn } = render(
-    React.createElement(HotboxUI, {
-      nodeVersion: o.nodeVersion!,
-      cpus: o.cpus!,
-      mem: o.mem!,
-      pids: o.pids!,
-      port: hostPort,
-      noNetwork: o.noNetwork || false,
-      logs: logs
-    })
-  );
-  rerender = rerenderFn;
 
   // Wait for process to exit
   await new Promise<void>((resolve) => {
